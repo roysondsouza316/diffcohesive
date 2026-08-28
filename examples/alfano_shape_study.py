@@ -16,9 +16,6 @@ Run a single case/law:
 Run everything and produce the four comparison figures:
     PYTHONPATH=. python examples/alfano_shape_study.py
 
-Known limitation: the thin_dcb/exponential continuation is traced through the peak only
-(a native-kernel access violation on Windows terminates the deep-softening branch); the
-other three laws trace the full softening branch for that case.
 """
 
 import argparse
@@ -244,6 +241,27 @@ def make_figure(case_name):
                     cut = i
                     break
             delta, R = delta[:cut], R[:cut]
+            # Crop the post-debond re-rise: once the ligament has fully failed, the load path
+            # goes through the joined arms and climbs again -- real for the model, but outside
+            # the shape study's scope. The debonding peak is the running maximum at the first
+            # 2% load drop; the curve is kept through the subsequent dip only.
+            run_max, drop_i = 0.0, None
+            for i, r in enumerate(R):
+                run_max = max(run_max, r)
+                if run_max > 0 and r < 0.98 * run_max:
+                    drop_i = i
+                    break
+            if drop_i is not None:
+                peak = max(R[:drop_i])
+                peak_i = R.index(peak)
+                tail = R[peak_i:]
+                min_off = min(range(len(tail)), key=lambda j: tail[j])
+                cut2 = peak_i + min_off + 1
+                if cut2 < len(R) - 1:
+                    delta, R = delta[:cut2], R[:cut2]
+            else:
+                peak = max(R) if R else float("nan")
+            print(f"  {case_name}/{law_name}: debonding peak {peak:.1f} N")
         plt.plot(delta, R, label=law_name)
     plt.xlabel("Displacement (mm)")
     plt.ylabel("Load R (N)")

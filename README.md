@@ -21,7 +21,7 @@ pip install diffcohesive   # released on PyPI
 
 # or, for development, from a clone:
 pip install -e ".[dev]"    # editable install + pytest
-python -m pytest tests/    # full validation suite (70 tests)
+python -m pytest tests/    # full validation suite (75 tests)
 ```
 
 **Installing as a top-up to an existing TensorMesh environment (the normal case).** Run
@@ -39,7 +39,7 @@ of the tree separately, once per environment.
 `diffcohesive` touches only TensorMesh's stable core (`Mesh`,
 `LinearElasticityElementAssembler`, sparse-matrix export), so TensorMesh's 0.2.0 additions
 (mixed multi-field assembly, distributed FEM, wave operators) neither affect nor constrain it.
-Verified combinations (full 70-test suite + CPU-vs-CUDA end-to-end solve/adjoint comparison at
+Verified combinations (full test suite + CPU-vs-CUDA end-to-end solve/adjoint comparison at
 machine precision + functional GPU sparse-solve checks):
 
 | package            | verified (old)  | verified (current) | constraint source                     |

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "diffcohesive"
-version = "0.1.0"
+version = "0.1.1"
 description = "Differentiable cohesive-zone fracture FEM (2D/3D) with gradient-based identification of analytic and neural-network-based traction-separation laws, built on TensorMesh/PyTorch"
 readme = "README.md"
 license = { text = "MIT" }

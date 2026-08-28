@@ -6,23 +6,10 @@ __pycache__/
 venv/
 build/
 dist/
-*.vtk
-*.vtu
-*.h5
 .DS_Store
 .claude/
 
-# LaTeX build artifacts (paper.pdf is committed; rebuild with pdflatex+bibtex)
-paper/*.aux
-paper/*.log
-paper/*.bbl
-paper/*.blg
-paper/*.out
-paper/*.spl
-paper/*.fls
-paper/*.fdb_latexmk
-
-# Abaqus job artifacts (regenerate via generate_inp.py + abaqus.bat; keep .inp/.csv/.png)
+# Abaqus job artifacts (regenerate via abaqus/dcb/generate_inp.py; keep .inp/.csv/.png)
 *.odb
 *.com
 *.msg
@@ -36,11 +23,10 @@ paper/*.fdb_latexmk
 *.res
 *.SMABulk*
 
-
+# FEniCSx benchmark outputs (regenerable; keep the committed CSV curves and figure)
 benchmarks/fenicsx_czm/results/
+*.vtk
+*.vtu
 *.pvtu
 *.pvd
-
-# build artifacts
-dist/
-*.egg-info/
+*.h5

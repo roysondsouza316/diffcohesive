@@ -101,7 +101,10 @@ def arc_length_solve(
             R, kappa_new, damage = model.residual(u_iter, kappa)
             res = R[free] - lam_iter * f_free
             res_norm = res.norm().item()
-            if res_norm < tol:
+            # Force-scale-relative convergence (see newton.py): absolute tol alone falls
+            # below the numerical residual floor of larger models.
+            scale = max(1.0, abs(lam_iter) * f_free.norm().item())
+            if res_norm < tol * scale:
                 converged = True
                 break
             # Early divergence detection: a step that is going to fail spends all max_iter

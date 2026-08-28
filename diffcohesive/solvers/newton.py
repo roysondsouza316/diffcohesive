@@ -47,7 +47,13 @@ def newton_solve(
         R, kappa_new, damage = model.residual(u, kappa_state)
         R_free = R[free_dofs]
         res_norm = R_free.norm().item()
-        if res_norm < tol:
+        # Convergence is judged relative to the problem's force scale (the reaction norm on
+        # the prescribed DOFs), with the absolute tol as the small-force fallback: on larger
+        # models the float64 residual floor above the float32-assembled K_bulk sits above any
+        # fixed absolute tolerance (observed ~1e-10 at ~40-unit reactions on a 1.5k-DOF 3D
+        # DCB), which otherwise reads as spurious non-convergence.
+        scale = max(1.0, R[prescribed_dofs].norm().item())
+        if res_norm < tol * scale:
             converged = True
             break
         K = model.tangent(u.detach(), kappa_state)

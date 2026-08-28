@@ -1,0 +1,46 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+build/
+dist/
+*.vtk
+*.vtu
+*.h5
+.DS_Store
+.claude/
+
+# LaTeX build artifacts (paper.pdf is committed; rebuild with pdflatex+bibtex)
+paper/*.aux
+paper/*.log
+paper/*.bbl
+paper/*.blg
+paper/*.out
+paper/*.spl
+paper/*.fls
+paper/*.fdb_latexmk
+
+# Abaqus job artifacts (regenerate via generate_inp.py + abaqus.bat; keep .inp/.csv/.png)
+*.odb
+*.com
+*.msg
+*.sta
+*.prt
+*.dat
+*.lck
+*.sim
+*.log
+*.023
+*.res
+*.SMABulk*
+
+
+benchmarks/fenicsx_czm/results/
+*.pvtu
+*.pvd
+
+# build artifacts
+dist/
+*.egg-info/

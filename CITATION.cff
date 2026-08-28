@@ -1,0 +1,31 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "diffcohesive: a differentiable cohesive-zone fracture solver"
+version: 0.1.0
+date-released: 2026-07-07
+license: MIT
+repository-code: "https://github.com/roysondsouza316/diffcohesive"
+authors:
+  # TODO: confirm affiliation/ORCID before release:
+  - family-names: "Dsouza"
+    given-names: "Royson"
+    affiliation: "VTT Technical Research Centre of Finland"
+abstract: >
+  A GPU-accelerated, end-to-end differentiable cohesive-zone fracture solver
+  built on the TensorMesh PyTorch-native finite element library. The entire
+  forward solve (Newton path-following with a handoff to Crisfield/Riks
+  arc-length through softening) is differentiable via implicit
+  differentiation/adjoint, enabling gradient-based identification of
+  analytic (bilinear Camanho-Davila/Turon, Benzeggagh-Kenane mixed-mode) or
+  neural-network-based traction-separation laws from load-displacement data, in place of
+  the derivative-free genetic-algorithm calibration that otherwise dominates
+  the cohesive-zone-model identification literature.
+keywords:
+  - cohesive zone model
+  - fracture mechanics
+  - delamination
+  - differentiable simulation
+  - finite element method
+  - automatic differentiation
+  - implicit differentiation
+  - inverse identification

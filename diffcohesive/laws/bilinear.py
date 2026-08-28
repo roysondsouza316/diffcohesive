@@ -44,6 +44,7 @@ class BilinearMixedModeTSL(TractionSeparationLaw):
         K: float = 1.0e7,
         smoothing_fraction: float = 1.0e-3,
         mixed_mode_criterion: str = "bk",
+        viscosity: float = 0.0,
         dtype: torch.dtype = torch.float64,
     ):
         super().__init__()
@@ -61,6 +62,18 @@ class BilinearMixedModeTSL(TractionSeparationLaw):
         # Structural (non-learnable) choice of mixed-mode toughness criterion; the learnable
         # exponent `eta` is the BK exponent or the power-law alpha accordingly.
         self.mixed_mode_criterion = mixed_mode_criterion
+        # Optional viscous regularization of the damage variable (the analogue of Abaqus's
+        # *DAMAGE STABILIZATION): the damage that degrades the traction is the Duvaut-Lions
+        # relaxed variable D_v, updated once per load step (pseudo-time dt = 1) as
+        #     D_v_new = (mu * D_v_prev + D_target) / (mu + 1),
+        # so D_v lags the instantaneous bilinear damage D_target with relaxation constant
+        # mu = ``viscosity`` (in load-step units; 0 disables and recovers the rate-independent
+        # law exactly). This regularizes sharp element pop-ins under displacement control at
+        # the cost of a small amount of artificial toughness -- keep mu small relative to the
+        # number of steps over the softening branch. Non-learnable; with viscosity > 0 the
+        # history state per quadrature point becomes [kappa, D_v] (state_dim = 2).
+        self.viscosity = float(viscosity)
+        self.state_dim = 2 if viscosity > 0.0 else 1
 
     def forward(
         self,
@@ -74,6 +87,10 @@ class BilinearMixedModeTSL(TractionSeparationLaw):
         G_c2 = _get("G_c2", self.G_c2, params)
         eta = _get("eta", self.eta, params)
         K = _get("K", self.K, params)
+
+        if self.state_dim == 2:
+            damage_v_prev = kappa_prev[..., 1]
+            kappa_prev = kappa_prev[..., 0]
 
         delta_n = delta_local[..., 0]
         shear = delta_local[..., 1:]
@@ -109,8 +126,15 @@ class BilinearMixedModeTSL(TractionSeparationLaw):
         )
         damage = torch.clamp(raw_damage, min=0.0, max=1.0)
 
+        if self.state_dim == 2:
+            mu = self.viscosity
+            damage = (mu * damage_v_prev + damage) / (mu + 1.0)
+            state_new = torch.stack([kappa_new, damage], dim=-1)
+        else:
+            state_new = kappa_new
+
         traction_n = K * delta_n - damage * K * mn
         traction_s = (1.0 - damage).unsqueeze(-1) * K * shear
         traction = torch.cat([traction_n.unsqueeze(-1), traction_s], dim=-1)
 
-        return traction, kappa_new, damage
+        return traction, state_new, damage

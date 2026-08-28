@@ -63,7 +63,13 @@ class CohesiveMeshModel:
         linear path; see tests/assembly/test_bulk_hooks.py)."""
         cells = [(name, conn.detach().cpu().numpy().astype(np.int64)) for name, conn in bulk_elements.items()]
         meshio_mesh = meshio.Mesh(points=points.detach().cpu().numpy(), cells=cells)
-        self.mesh = Mesh(meshio_mesh)
+        # reorder=True converts meshio/VTK cyclic node ordering to TensorMesh's internal
+        # tensor-product ordering for quad/hexahedron cells. Without it, tensor-product
+        # elements are assembled twisted (uniform-strain patch reaction off by exactly
+        # 1/sqrt(3)); node ids and point order are unchanged, so all DOF indexing and the
+        # cohesive-connectivity convention are unaffected. Simplex cells (triangles) are
+        # ordering-insensitive either way. Verified by tests/assembly/test_bulk_patch.py.
+        self.mesh = Mesh(meshio_mesh, reorder=True)
         self.dim = self.mesh.dim
         self.n_points = self.mesh.n_points
         self.n_dof = self.n_points * self.dim

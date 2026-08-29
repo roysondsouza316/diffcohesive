@@ -40,10 +40,12 @@ def lefm_compliance(a0: float, E: float, arm_height: float) -> float:
 
 
 def build_dcb_model(
-    length, arm_height, crack_length, nx, ny, E, nu, T_max_n, T_max_s, G_c1, G_c2, K
+    length, arm_height, crack_length, nx, ny, E, nu, T_max_n, T_max_s, G_c1, G_c2, K,
+    viscosity=0.0,
 ):
     mesh = build_double_cantilever_mesh(length, arm_height, crack_length, nx, ny)
-    law = BilinearMixedModeTSL(T_max_n=T_max_n, T_max_s=T_max_s, G_c1=G_c1, G_c2=G_c2, K=K)
+    law = BilinearMixedModeTSL(T_max_n=T_max_n, T_max_s=T_max_s, G_c1=G_c1, G_c2=G_c2, K=K,
+                               viscosity=viscosity)
     model = CohesiveMeshModel(
         points=mesh.points,
         bulk_elements={"triangle": mesh.elements},
@@ -72,10 +74,53 @@ def run_dcb(
     max_disp=0.6,
     arc_ds=0.003,
     arc_steps=200,
+    viscosity=0.0,
 ):
     model, mesh = build_dcb_model(
-        length, arm_height, crack_length, nx, ny, E, nu, T_max_n, T_max_s, G_c1, G_c2, K
+        length, arm_height, crack_length, nx, ny, E, nu, T_max_n, T_max_s, G_c1, G_c2, K,
+        viscosity=viscosity,
     )
+    if viscosity > 0.0:
+        # Viscous damage regularization active: displacement control with adaptive increment
+        # cutting traces the whole softening branch directly (no arc-length handoff needed),
+        # mirroring the 3D comparison runner (abaqus/dcb3d/run_diffcohesive_3d.py).
+        from diffcohesive.solvers import adaptive_displacement_solve
+
+        dtype = model.points.dtype
+        right_dofs = model.dof_indices(mesh.right_edge_nodes)
+        tip_top_y = model.dof_indices(torch.tensor([mesh.tip_top]))[1]
+        tip_bottom_y = model.dof_indices(torch.tensor([mesh.tip_bottom]))[1]
+
+        def prescribed_fn(d):
+            pd = torch.cat([right_dofs, tip_top_y.reshape(1), tip_bottom_y.reshape(1)])
+            pv = torch.cat([
+                torch.zeros(right_dofs.numel(), dtype=dtype),
+                torch.tensor([d / 2, -d / 2], dtype=dtype),
+            ])
+            return pd, pv
+
+        kappa = model.init_history()
+        u = torch.zeros(model.n_dof, dtype=dtype)
+        delta_list, P_list = [0.0], [0.0]
+        d_prev = 0.0
+        for d in torch.linspace(0.0, max_disp, n_disp_steps, dtype=dtype)[1:]:
+            out = adaptive_displacement_solve(
+                model, prescribed_fn, kappa, u, d_prev, float(d),
+                initial_step=float(d) - d_prev, max_iter=60,
+            )
+            if out is None or out[3] < float(d) - 1e-12:
+                break
+            result, u, kappa, d_prev = out
+            P_top, P_bottom = result.reaction[-2].item(), result.reaction[-1].item()
+            delta_list.append(float(d))
+            P_list.append(0.5 * (P_top - P_bottom))
+        return {
+            "delta": delta_list,
+            "P": P_list,
+            "mesh": mesh,
+            "model": model,
+            "switch_index": None,
+        }
     dtype = model.points.dtype
 
     right_dofs = model.dof_indices(mesh.right_edge_nodes)

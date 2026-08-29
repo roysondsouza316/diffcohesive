@@ -30,6 +30,11 @@ def load_abaqus_csv(path):
 def main():
     fem = run_dcb(**{})
     delta_fem, P_fem = fem["delta"], fem["P"]
+    # Stabilized run: small viscous damage regularization traces the full softening branch
+    # under displacement control (same device as the 3D comparison); mu kept small so the
+    # added artificial toughness stays minor.
+    fem_v = run_dcb(viscosity=0.1, max_disp=0.9, n_disp_steps=90)
+    delta_v, P_v = fem_v["delta"], fem_v["P"]
     # Show the softening ENVELOPE: our arc-length traces the serrated equilibrium path through
     # each local element snap-back (the path doubles back in delta); both Abaqus solution
     # methods (automatic *STATIC incrementation and RIKS) step over those, so for a like-for-
@@ -43,6 +48,15 @@ def main():
             break
     delta_fem, P_fem = delta_fem[:cut], P_fem[:cut]
 
+    # Cache both computed curves so figure styling can be redone without re-solving
+    # (used by paper/figures_notebook.ipynb).
+    for name, dd, pp in [("dcb_diffcohesive_envelope.csv", delta_fem, P_fem),
+                          ("dcb_diffcohesive_mu01.csv", delta_v, P_v)]:
+        with open(HERE / name, "w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["delta", "P"])
+            w.writerows(zip(dd, pp))
+
     abq_csv = HERE / "dcb_abaqus_result.csv"
     delta_abq, P_abq = load_abaqus_csv(abq_csv)
 
@@ -52,8 +66,12 @@ def main():
     delta_lin = [0.0, delta_fem[peak_idx]]
 
     plt.figure(figsize=(6.5, 5))
-    plt.plot(delta_fem, P_fem, "o-", ms=3, label="present (diffcohesive, arc-length)")
-    plt.plot(delta_abq, P_abq, "s--", ms=4, label="Abaqus *STATIC (COH2D4, same mesh)")
+    plt.plot(delta_fem, P_fem, "o-", ms=3, color="C0",
+             label="present, arc-length envelope (exact)")
+    plt.plot(delta_v, P_v, "-", lw=1.6, color="C0", alpha=0.55,
+             label="present, viscous stabilization $\mu=0.1$ (full branch)")
+    plt.plot(delta_abq, P_abq, "s--", ms=4, color="C1",
+             label="Abaqus *STATIC (COH2D4, same mesh)")
     riks_csv = HERE / "dcb_riks_job_result.csv"
     if riks_csv.exists():
         delta_rk, P_rk = load_abaqus_csv(riks_csv)

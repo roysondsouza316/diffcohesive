@@ -31,3 +31,6 @@ root:
 - `crack_path_selection.py` -- competition between candidate crack paths.
 - `friction_demo.py` -- the Alfano-Sacco damage-friction law under normal compression.
 - `convergence_study.py` -- mesh/process-zone convergence of the DCB peak load.
+- `nonlinear_bulk_dcb.py` -- nonlinear (saturating-hardening) bulk arms through the
+  `bulk_residual_fn`/`bulk_tangent_fn` hooks of `CohesiveMeshModel`, with the adjoint
+  gradient checked against finite differences while the nonlinear bulk is active.

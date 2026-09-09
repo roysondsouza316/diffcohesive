@@ -3,7 +3,7 @@ COMET-FEniCSx tour (Bleyer): the normalized traction-opening curve must equal th
 T/sigma_c = (delta/delta_0)*exp(1 - delta/delta_0), the damage variable must equal
 d = 1 - exp(-kappa/delta_0) exactly (their formulation IS our secant formalism for this
 envelope), the envelope must integrate to exactly G_c, and the beta shear-coupling must weight
-the effective opening as sqrt(<dn>^2 + beta*ds^2)."""
+the effective opening as sqrt(<dn>^2 + beta^2*ds^2) (the reference's convention)."""
 
 import math
 
@@ -60,7 +60,7 @@ def test_beta_coupling_weights_shear():
     beta = 2.0  # the tour's coupling coefficient
     law = SmithFerranteTSL(Gc=GC, sigma_c=SIGMA_C, beta=beta)
     d0 = GC / (SIGMA_C * math.e)
-    # Pure shear s: effective delta = sqrt(beta)*s -> damage onset earlier than for beta=1.
+    # Pure shear s: effective delta = beta*s -> damage onset earlier than for beta=1.
     kappa1 = torch.tensor(0.0, dtype=torch.float64)
     kappa2 = torch.tensor(0.0, dtype=torch.float64)
     s = 2.0 * d0
@@ -68,3 +68,7 @@ def test_beta_coupling_weights_shear():
     _, _, D1 = law1(torch.tensor([0.0, s], dtype=torch.float64), kappa1)
     _, _, D2 = law(torch.tensor([0.0, s], dtype=torch.float64), kappa2)
     assert D2.item() > D1.item()  # stronger coupling -> more damage at equal sliding
+    # Exact check of the reference convention: with pure sliding s, kappa = beta*s, so
+    # D = 1 - exp(-beta*s/delta_0).
+    D_exact = 1.0 - math.exp(-beta * s / d0)
+    assert abs(D2.item() - D_exact) < 1e-6

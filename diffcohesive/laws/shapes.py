@@ -167,7 +167,7 @@ class SmithFerranteTSL(_ShapedTSL):
 
         T = (G_c / delta_0^2) * exp(-delta/delta_0) * [[u]],   delta_0 = G_c / (sigma_c * e),
 
-    with effective opening delta = sqrt(<delta_n>^2 + beta*delta_s^2) and damage
+    with effective opening delta = sqrt(<delta_n>^2 + beta^2*delta_s^2) and damage
     d = 1 - exp(-max(delta)/delta_0). Only two parameters are independent (G_c, sigma_c);
     the initial stiffness is K_0 = G_c/delta_0^2 and the envelope integrates to exactly G_c.
     The damage variable of that reference IS this package's secant damage for this envelope:
@@ -200,11 +200,8 @@ class SmithFerranteTSL(_ShapedTSL):
 
     def forward(self, delta_local, kappa_prev, params=None):
         # The reference's beta enters ONLY the damage-driving effective opening,
-        # delta = sqrt(<dn>^2 + beta*ds^2); the traction map stays isotropic,
+        # delta = sqrt(<dn>^2 + beta^2*ds^2); the traction map stays isotropic,
         # T = (1-d) K0 [[u]] (with our Macaulay'd compression penalty on the normal part).
-        # An earlier implementation scaled the tangential STIFFNESS by beta as well -- caught
-        # by the cross-code comparison against the FEniCSx reference (30% peak overshoot on
-        # the two-inclusion problem) and corrected here.
         K0 = params["K0"] if params is not None and "K0" in params else self.K0
         sigma0 = params["sigma0"] if params is not None and "sigma0" in params else self.sigma0
         Gc = params["Gc"] if params is not None and "Gc" in params else self.Gc
@@ -213,7 +210,7 @@ class SmithFerranteTSL(_ShapedTSL):
         shear = delta_local[..., 1:]
         eps = self.smoothing_fraction * sigma0 / K0
         mn = smooth_macaulay(delta_n, eps)
-        lam = torch.sqrt(mn * mn + self.beta * shear.pow(2).sum(-1) + 1.0e-24)
+        lam = torch.sqrt(mn * mn + self.beta ** 2 * shear.pow(2).sum(-1) + 1.0e-24)
         kappa_new = smooth_max(kappa_prev, lam, eps)
 
         kappa_safe = kappa_new.clamp_min(1.0e-15)

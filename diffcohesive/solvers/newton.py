@@ -26,7 +26,11 @@ def newton_solve(
     u0: torch.Tensor = None,
     tol: float = 1e-10,
     max_iter: int = 50,
+    linear_solver: str = "dense",
 ) -> NewtonResult:
+    """``linear_solver="sparse"`` factorizes the tangent with torch-sla's sparse direct
+    solver instead of dense LU (the tangent is >98% zeros on typical meshes; the dense
+    factorization dominates per-iteration cost from a few thousand DOFs up)."""
     dtype = model.points.dtype
     device = model.points.device
     n_dof = model.n_dof
@@ -58,10 +62,19 @@ def newton_solve(
             break
         K = model.tangent(u.detach(), kappa_state)
         K_ff = K[free_dofs.unsqueeze(-1), free_dofs.unsqueeze(0)]
-        du_free = torch.linalg.solve(K_ff, -R_free.detach())
+        if linear_solver == "sparse":
+            import torch_sla
+
+            du_free = torch_sla.spsolve_csr(K_ff.detach().to_sparse_csr(), -R_free.detach())
+        else:
+            du_free = torch.linalg.solve(K_ff.detach(), -R_free.detach())
         u = u.clone()
         u[free_dofs] = u[free_dofs] + du_free
 
-    R, kappa_new, damage = model.residual(u, kappa_state)
+    # Returned state is graph-free: differentiation goes through solve_diff's implicit
+    # adjoint, and a graph carried across load steps retains every increment's tangent.
+    u = u.detach()
+    with torch.no_grad():
+        R, kappa_new, damage = model.residual(u, kappa_state)
     reaction = R[prescribed_dofs]
     return NewtonResult(u=u, kappa=kappa_new, damage=damage, converged=converged, n_iter=n_iter, reaction=reaction)

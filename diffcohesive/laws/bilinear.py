@@ -42,6 +42,7 @@ class BilinearMixedModeTSL(TractionSeparationLaw):
         G_c2: float,
         eta: float = 1.0,
         K: float = 1.0e7,
+        K_s: float = None,
         smoothing_fraction: float = 1.0e-3,
         mixed_mode_criterion: str = "bk",
         viscosity: float = 0.0,
@@ -56,6 +57,19 @@ class BilinearMixedModeTSL(TractionSeparationLaw):
         self.G_c2 = torch.nn.Parameter(torch.as_tensor(G_c2, dtype=dtype))
         self.eta = torch.nn.Parameter(torch.as_tensor(eta, dtype=dtype))
         self.K = torch.nn.Parameter(torch.as_tensor(K, dtype=dtype))
+        # Optional independent shear penalty stiffness: None (default) keeps the
+        # single-stiffness formulation on the original code path. When given, K_s becomes a
+        # seventh learnable parameter, the shear onset uses delta0_s = T_max_s/K_s, and the
+        # fracture criterion is evaluated at the energy mode ratio
+        # B = K_s ds^2 / (K mn^2 + K_s ds^2), which reduces to the displacement ratio when
+        # K_s = K. The final displacement uses the path stiffness
+        # K_path = (1-beta) K + beta K_s with beta the displacement mode ratio, so pure-mode
+        # dissipation remains exactly G_c1 / G_c2 and proportional mixed-mode paths
+        # dissipate G_c(B) (verified in tests/laws/test_independent_stiffness.py).
+        if K_s is not None:
+            self.K_s = torch.nn.Parameter(torch.as_tensor(K_s, dtype=dtype))
+        else:
+            self.K_s = None
         # Numerical (non-learnable) transition width for the smoothed Macaulay/history-max,
         # scaled relative to the mode-I onset displacement each call.
         self.smoothing_fraction = smoothing_fraction
@@ -87,6 +101,7 @@ class BilinearMixedModeTSL(TractionSeparationLaw):
         G_c2 = _get("G_c2", self.G_c2, params)
         eta = _get("eta", self.eta, params)
         K = _get("K", self.K, params)
+        K_s = _get("K_s", self.K_s, params) if self.K_s is not None else None
 
         if self.state_dim == 2:
             damage_v_prev = kappa_prev[..., 1]
@@ -99,25 +114,42 @@ class BilinearMixedModeTSL(TractionSeparationLaw):
         delta_s = torch.sqrt(shear.pow(2).sum(-1) + eps_shear)
 
         delta0_n = T_max_n / K
-        delta0_s = T_max_s / K
+        delta0_s = T_max_s / (K if K_s is None else K_s)
         eps = self.smoothing_fraction * delta0_n
 
         mn = smooth_macaulay(delta_n, eps)
         lam = torch.sqrt(mn * mn + delta_s * delta_s)
 
-        # Displacement-based mixed-mode ratio (reduces to 0/1 in the pure normal/shear limits).
+        # Displacement-based mixed-mode ratio (reduces to 0/1 in the pure-mode limits); it
+        # governs the onset-displacement interpolation and, with unequal stiffnesses, the
+        # path stiffness for the dissipation bookkeeping below.
         mode_mix = delta_s * delta_s / (delta_s * delta_s + mn * mn + eps_shear)
+        if K_s is None:
+            B_energy = mode_mix
+        else:
+            # The fracture criterion G_c(B) is stated in the ENERGY mode ratio
+            # B = G_II/(G_I+G_II) = K_s ds^2 / (K mn^2 + K_s ds^2); it equals the
+            # displacement ratio when K_s = K.
+            B_energy = K_s * delta_s * delta_s / (
+                K_s * delta_s * delta_s + K * mn * mn + K * eps_shear
+            )
 
         delta0_m = torch.sqrt(delta0_n * delta0_n + (delta0_s * delta0_s - delta0_n * delta0_n) * mode_mix)
         if self.mixed_mode_criterion == "power":
             # (G_I/G_c1)^alpha + (G_II/G_c2)^alpha = 1 at fixed mode ratio B = mode_mix; the
             # small clamp keeps the fractional power differentiable at the pure-mode limits.
             eps_pow = 1.0e-12
-            B = mode_mix.clamp(eps_pow, 1.0 - eps_pow)
+            B = B_energy.clamp(eps_pow, 1.0 - eps_pow)
             G_c_m = (((1.0 - B) / G_c1).pow(eta) + (B / G_c2).pow(eta)).pow(-1.0 / eta)
         else:  # "bk"
-            G_c_m = G_c1 + (G_c2 - G_c1) * mode_mix.pow(eta)
-        deltaf_m = 2.0 * G_c_m / (K * delta0_m)
+            G_c_m = G_c1 + (G_c2 - G_c1) * B_energy.pow(eta)
+        # Path stiffness for the dissipation bookkeeping: along a proportional separation
+        # path the incremental work is (1-D) * K_path * lam dlam with
+        # K_path = (1-beta) K + beta K_s and beta the DISPLACEMENT mode ratio, so this
+        # choice makes the dissipated energy equal G_c(B) exactly on proportional paths
+        # (and G_c1/G_c2 exactly in the pure modes). Reduces to K when K_s = K.
+        K_path = K if K_s is None else (1.0 - mode_mix) * K + mode_mix * K_s
+        deltaf_m = 2.0 * G_c_m / (K_path * delta0_m)
 
         kappa_new = smooth_max(kappa_prev, lam, eps)
 
@@ -134,7 +166,7 @@ class BilinearMixedModeTSL(TractionSeparationLaw):
             state_new = kappa_new
 
         traction_n = K * delta_n - damage * K * mn
-        traction_s = (1.0 - damage).unsqueeze(-1) * K * shear
+        traction_s = (1.0 - damage).unsqueeze(-1) * (K if K_s is None else K_s) * shear
         traction = torch.cat([traction_n.unsqueeze(-1), traction_s], dim=-1)
 
         return traction, state_new, damage

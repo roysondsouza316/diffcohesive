@@ -42,9 +42,13 @@ def main():
     global VISCOSITY
     viscosity = float(sys.argv[1]) if len(sys.argv) > 1 else VISCOSITY
     out_name = sys.argv[2] if len(sys.argv) > 2 else "dcb3d_diffcohesive.csv"
-    mesh = build_double_cantilever_mesh_3d(L, ARM, W, A0, nx=NX, ny=NY, nz=NZ)
+    smoothing = float(sys.argv[3]) if len(sys.argv) > 3 else 1.0e-3
+    nx = int(sys.argv[4]) if len(sys.argv) > 4 else NX
+    ny = int(sys.argv[5]) if len(sys.argv) > 5 else NY
+    nz = int(sys.argv[6]) if len(sys.argv) > 6 else NZ
+    mesh = build_double_cantilever_mesh_3d(L, ARM, W, A0, nx=nx, ny=ny, nz=nz)
     law = BilinearMixedModeTSL(T_max_n=SIGMA0, T_max_s=SIGMA0, G_c1=GC, G_c2=GC, eta=ETA, K=K,
-                               viscosity=viscosity)
+                               viscosity=viscosity, smoothing_fraction=smoothing)
     model = CohesiveMeshModel(
         points=mesh.points, bulk_elements={mesh.cell_type: mesh.elements},
         cohesive_connectivity=mesh.cohesive_connectivity, law=law, E=E, nu=NU,

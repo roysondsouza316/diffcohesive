@@ -16,7 +16,10 @@ Boundary conditions match the diffcohesive run: the x = L face is fully clamped,
 tip node lines (x = 0, y = 0 and y = 2*arm_height, all z) are opened by +/- MAX_DISP/2 in y.
 
 Run with (from repo root, any Python environment -- this script only writes plain text):
-    python abaqus/dcb3d/generate_inp_3d.py
+    python abaqus/dcb3d/generate_inp_3d.py [nx ny nz [tag [viscosity]]]
+The optional arguments override the mesh divisions, the output name ({tag}.inp and
+{tag}_meta.csv), and add cohesive viscous regularization via *SECTION CONTROLS (Abaqus
+ignores *DAMAGE STABILIZATION for cohesive elements with traction-separation response).
 Then solve with Abaqus itself:
     & "C:\\SIMULIA\\Commands\\abaqus.bat" job=dcb3d input=dcb3d.inp interactive
 """
@@ -42,7 +45,12 @@ N_STEPS_ABQ = 25
 
 
 def main():
-    mesh = build_double_cantilever_mesh_3d(L, ARM, W, A0, nx=NX, ny=NY, nz=NZ)
+    nx = int(sys.argv[1]) if len(sys.argv) > 1 else NX
+    ny = int(sys.argv[2]) if len(sys.argv) > 2 else NY
+    nz = int(sys.argv[3]) if len(sys.argv) > 3 else NZ
+    tag = sys.argv[4] if len(sys.argv) > 4 else "dcb3d"
+    stab = float(sys.argv[5]) if len(sys.argv) > 5 else 0.0
+    mesh = build_double_cantilever_mesh_3d(L, ARM, W, A0, nx=nx, ny=ny, nz=nz)
     points = mesh.points.tolist()
     hexes = mesh.elements.tolist()
     coh = mesh.cohesive_connectivity.tolist()
@@ -72,7 +80,14 @@ def main():
     lines.append("**")
     lines.append("*SOLID SECTION, ELSET=ARMS, MATERIAL=ARM_MAT")
     lines.append(",")
-    lines.append("*COHESIVE SECTION, ELSET=COHESIVE, MATERIAL=COH_MAT, RESPONSE=TRACTION SEPARATION, THICKNESS=SPECIFIED")
+    coh_section = "*COHESIVE SECTION, ELSET=COHESIVE, MATERIAL=COH_MAT, RESPONSE=TRACTION SEPARATION, THICKNESS=SPECIFIED"
+    if stab > 0.0:
+        # Viscous regularization for cohesive elements: Abaqus rejects *DAMAGE STABILIZATION
+        # for traction-separation response and takes the viscosity via *SECTION CONTROLS.
+        lines.append(f"*SECTION CONTROLS, NAME=COH_STAB, VISCOSITY={stab}")
+        lines.append(",")
+        coh_section += ", CONTROLS=COH_STAB"
+    lines.append(coh_section)
     lines.append("1.0")
 
     lines.append("**")
@@ -118,17 +133,17 @@ def main():
     lines.append("U2, RF2")
     lines.append("*END STEP")
 
-    (HERE / "dcb3d.inp").write_text("\n".join(lines) + "\n")
+    (HERE / (tag + ".inp")).write_text("\n".join(lines) + "\n")
 
     # Tip node labels (1-based) for extract_odb_3d.py, which runs under Abaqus's own Python
     # and cannot import this repo.
-    with open(HERE / "dcb3d_meta.csv", "w", newline="") as f:
+    with open(HERE / (tag + "_meta.csv"), "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["set", "labels"])
         w.writerow(["tip_top", " ".join(str(n + 1) for n in tip_top)])
         w.writerow(["tip_bottom", " ".join(str(n + 1) for n in tip_bottom)])
 
-    print(f"Wrote dcb3d.inp ({len(points)} nodes, {n_bulk} C3D8, {len(coh)} COH3D8) and dcb3d_meta.csv")
+    print(f"Wrote {tag}.inp ({len(points)} nodes, {n_bulk} C3D8, {len(coh)} COH3D8) and {tag}_meta.csv")
 
 
 if __name__ == "__main__":

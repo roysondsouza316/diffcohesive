@@ -27,7 +27,8 @@ def node_series(step, label, var):
 
 def main():
     job = sys.argv[1] if len(sys.argv) > 1 else "dcb3d"
-    top_labels, bottom_labels = read_meta("dcb3d_meta.csv")
+    meta = sys.argv[2] if len(sys.argv) > 2 else "dcb3d_meta.csv"
+    top_labels, bottom_labels = read_meta(meta)
     odb = openOdb(job + ".odb", readOnly=True)
     step = odb.steps[list(odb.steps.keys())[0]]
 
